@@ -333,7 +333,51 @@
       
         
           
-            
+            <h3 id="学习g2o笔记"><a href="#学习g2o笔记" class="headerlink" title="学习g2o笔记"></a>学习g2o笔记</h3><h4 id="整体框架"><a href="#整体框架" class="headerlink" title="整体框架"></a>整体框架</h4><p><img src="https://user-images.githubusercontent.com/17897733/70409104-830f1e00-1a85-11ea-87fe-33c506eca6c0.png" alt="g2o整体框架"></p>
+<h4 id="自定义部分"><a href="#自定义部分" class="headerlink" title="自定义部分"></a>自定义部分</h4><p><strong>自定义顶点</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">class Vertex_name : public g2o&lt;int D,typename T&gt;&#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>D为维度——在流形空间的最小表示；<br>T是顶点（状态变量）的类型。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">virtual void setToOriginalImpl() override&#123;&#125;</span><br><span class="line">virtual void oplusImpl(const double *update) override&#123;&#125;</span><br><span class="line">virtual bool read(std::istream &amp;in) override&#123;&#125;</span><br><span class="line">virtual bool write(std::ostream &amp;out) const override&#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>其中，setToOriginalImpl() 设定为被优化变量的原始值；<br>oplusImpl 为如何调整估计值。</p>
+<p><strong>自定义边</strong></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">class Edge_name : public g2o::BaseUnaryEdge&lt;int D, typename E, Vertiex Xi&gt;&#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>D对应着误差的维度；<br>E为边的类型，一般为：Eigen::VectorN；<br>X为顶点的类型，需要注意的是为上述自定义的顶点类型：Vertex_name。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">virtual void computerError() override&#123;&#125;</span><br><span class="line">virtual void linearizeOplus() override&#123;&#125;</span><br><span class="line">virtual bool read(std::istream &amp;in) override&#123;&#125;</span><br><span class="line">virtual bool write(std::ostream &amp;out) const override&#123;&#125;</span><br></pre></td></tr></table></figure>
+
+<p>computerError 为用当前定点计算的测量值与真实的测量值之间的误差。<br>linearizeOplus 为在当前顶点的值下，该误差对优化变量的偏导数——jacobian<br>需要在linearizeOplus中定义出—: jacobianOplusXi<br>jacobianOplusXi类型为Eigen::Matrix</p>
+<h4 id="配置SparseOptimizer的优化算法和求解器"><a href="#配置SparseOptimizer的优化算法和求解器" class="headerlink" title="配置SparseOptimizer的优化算法和求解器"></a>配置SparseOptimizer的优化算法和求解器</h4><ol>
+<li><p>创建一个线性求解器LinearSolver；</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">typedef g2o::BlockSolver&lt;g2o::BlockSolverTraits&lt;3,1&gt;&gt; Block;</span><br><span class="line">Block:: LinearSolverType* linearSolver = new g2o::linearSolverDense&lt;Block::PoseMatrixType&gt;();</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>创建BlockSolver。并用线性求解器初始化；</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Block* solver_ptr = new Block(linearSolver);</span><br></pre></td></tr></table></figure>
+
+</li>
+</ol>
+<p>注意：</p>
+<ul>
+<li><figure class="highlight plain"><figcaption><span>BlockSolverTraits<p, l>>``` 为固定尺寸</p,></span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">- ```BlockSolverPL&lt;Eigen::Dynamic, Eigen::Dynamic&gt;``` 尺寸可变</span><br><span class="line">有些pose 或 landmark在程序开始时并不确定</span><br><span class="line"></span><br><span class="line">3. 创建总求解器solver。从GN，LM，Dogleg中选一个，再用Blocksolver初始化；</span><br></pre></td></tr></table></figure>
+
+</li>
+</ul>
+<p>g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg( solver_ptr );</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">4. 创建稀疏优化器——SparseOptimizer；</span><br></pre></td></tr></table></figure>
+
+<p>g2o::SparseOptimizer optimizer; //<br>optimizer.setAlgorithm(solver);<br>optimizer.setVerbose(true);</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">5. 定义图的顶点和边，并添加到SparseOptimizer中。</span><br></pre></td></tr></table></figure>
+
+<p>Vertex_name <em>v = new Vertex_name();<br>v -&gt; setId(0);<br>v -&gt; serEstimate(typeofvertex);<br>optimizer.addVertex(v);<br>for (int i=0;i&lt;N;i++){<br>  Edge_name edge = new Edge_name(x_data[i]);<br>  edge -&gt; setId(0);<br>  edge -&gt; setVertex(0,v);<br>  edge -&gt; setMeasurement(y_data[i]);<br>  edge -&gt; setInformation( Eigen::Matrix&lt;double,1,1&gt;::Identity()</em>1/(w_sigma*w_sigma) ); // 信息矩阵：协方差矩阵之逆<br>  optimizer.addEdge(edge);<br>}</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">6. 设置优化参数</span><br><span class="line"></span><br><span class="line">初始化、设置迭代次数并开始优化</span><br></pre></td></tr></table></figure>
+
+<p>optimizer.initializeOptimization();<br>optimizer.optimize(100);</p>
+<pre><code>
+
+#### 参考资料
+[从零开始一起学习SLAM | 理解图优化，一步步带你看懂g2o代码
+](https://mp.weixin.qq.com/s/j9h9lT14jCu-VvEPHQhtBw)</code></pre>
           
         
       
